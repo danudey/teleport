@@ -1070,11 +1070,23 @@ func (s *ServicesTestSuite) Semaphore(c *check.C) {
 	err = s.PresenceS.KeepAliveSemaphoreLease(context.TODO(), badLease)
 	fixtures.ExpectNotFound(c, err)
 
+	// Can't cancel nonexistent lease
+	err = s.PresenceS.CancelSemaphoreLease(context.TODO(), badLease)
+	fixtures.ExpectNotFound(c, err)
+
 	// Can't renew expired lease
 	expiredLease := newLease
 	expiredLease.Expires = time.Now().Add(-1 * time.Hour)
 	err = s.PresenceS.KeepAliveSemaphoreLease(context.TODO(), expiredLease)
 	fixtures.ExpectBadParameter(c, err)
+
+	// leases can be canceled
+	err = s.PresenceS.CancelSemaphoreLease(context.TODO(), newLease)
+	c.Assert(err, check.IsNil)
+
+	// canceled lease cannot be found
+	err = s.PresenceS.KeepAliveSemaphoreLease(context.TODO(), newLease)
+	fixtures.ExpectNotFound(c, err)
 
 	err = s.PresenceS.DeleteAllSemaphores(context.TODO())
 	c.Assert(err, check.IsNil)

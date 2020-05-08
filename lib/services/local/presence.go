@@ -721,6 +721,14 @@ func (s *PresenceService) TryAcquireSemaphore(ctx context.Context, sem services.
 	if err != nil {
 		return nil, trace.Wrap(err)
 	}
+	// Because of the distributed nature of teleport, it is possible for different
+	// actors to have differt views on what the correct MaxResources value is.
+	// Since semaphores are lazily initialized, preserving the MaxResources expected
+	// by the first acquirer would lead to less consistent behavior than simply
+	// judging each acquition attempt by the MaxResources expected by that caller.
+	// As such, the MaxResources value serves more as a "most recently seen maximum"
+	// than as a true objective maximum.
+	existing.SetMaxResources(sem.GetMaxResources())
 
 	existing.RemoveExpiredLeases(s.Clock().Now().UTC())
 
@@ -733,7 +741,7 @@ func (s *PresenceService) TryAcquireSemaphore(ctx context.Context, sem services.
 
 	for _, lease := range existing.GetLeases() {
 		if lease.ID == l.ID {
-			return nil, trace.BadParameter(
+			return nil, trace.AlreadyExists(
 				"semaphore %v already has lease %v, use KeepAliveSemaphoreLease to renew the lease",
 				sem, l.ID,
 			)
@@ -830,6 +838,51 @@ func (s *PresenceService) KeepAliveSemaphoreLease(ctx context.Context, l service
 	return nil
 }
 
+// CancelSemaphoreLease cancels semaphore lease early.
+func (s *PresenceService) CancelSemaphoreLease(ctx context.Context, l services.SemaphoreLease) error {
+	if err := l.CheckAndSetDefaults(); err != nil {
+		return trace.Wrap(err)
+	}
+
+	if l.Expires.Before(s.Clock().Now()) {
+		return trace.BadParameter("the lease %v has expired at %v", l.ID, l.Expires)
+	}
+
+	key := backend.Key(semaphoresPrefix, l.SemaphoreSubKind, l.SemaphoreName)
+	item, err := s.Get(ctx, key)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+
+	sem, err := services.GetSemaphoreMarshaler().Unmarshal(item.Value)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+
+	if err := sem.RemoveLease(l); err != nil {
+		return trace.Wrap(err)
+	}
+
+	newValue, err := services.GetSemaphoreMarshaler().Marshal(sem)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+
+	newItem := backend.Item{
+		Key:   key,
+		Value: newValue,
+	}
+
+	_, err = s.CompareAndSwap(ctx, *item, newItem)
+	if err != nil {
+		if trace.IsCompareFailed(err) {
+			return trace.CompareFailed("semaphore %v hase been concurrently updated, try again", sem.GetName())
+		}
+		return trace.Wrap(err)
+	}
+	return nil
+}
+
 // GetAllSemaphores returns a list of all semaphores in the system
 func (s *PresenceService) GetAllSemaphores(ctx context.Context, opts ...services.MarshalOption) ([]services.Semaphore, error) {
 	startKey := backend.Key(semaphoresPrefix)
@@ -840,14 +893,14 @@ func (s *PresenceService) GetAllSemaphores(ctx context.Context, opts ...services
 
 	sems := make([]services.Semaphore, len(result.Items))
 	for i, item := range result.Items {
-		conn, err := services.GetSemaphoreMarshaler().Unmarshal(item.Value,
+		sem, err := services.GetSemaphoreMarshaler().Unmarshal(item.Value,
 			services.AddOptions(opts,
 				services.WithResourceID(item.ID),
 				services.WithExpires(item.Expires))...)
 		if err != nil {
 			return nil, trace.Wrap(err)
 		}
-		sems[i] = conn
+		sems[i] = sem
 	}
 
 	return sems, nil

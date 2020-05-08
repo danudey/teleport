@@ -685,6 +685,10 @@ message RoleOptions {
 
     // BPF defines what events to record for the BPF-based session recorder.
     repeated string BPF = 7 [ (gogoproto.jsontag) = "enhanced_recording,omitempty" ];
+
+    // MaxConcurrentSessions defines the maximum number of
+    // concurrent SSH sessions a user may hold.
+    int64 MaxConcurrentSessions = 8 [ (gogoproto.jsontag) = "max_concurrent_sessions,omitempty" ];
 }
 
 // RoleConditions is a set of conditions that must all match to be allowed or

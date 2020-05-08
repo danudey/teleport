@@ -22,6 +22,8 @@ type Semaphores interface {
 	TryAcquireSemaphore(ctx context.Context, sem Semaphore, l SemaphoreLease) (*SemaphoreLease, error)
 	// KeepAliveSemaphoreLease updates semaphore lease
 	KeepAliveSemaphoreLease(ctx context.Context, l SemaphoreLease) error
+	// CancelSemaphoreLease cancels semaphore lease early
+	CancelSemaphoreLease(ctx context.Context, l SemaphoreLease) error
 	// GetAllSemaphores returns a list of all semaphores in the system
 	GetAllSemaphores(ctx context.Context, opts ...MarshalOption) ([]Semaphore, error)
 	// DeleteAllSemaphores deletes all semaphores in the system
@@ -165,9 +167,11 @@ func AcquireSemaphore(ctx context.Context, lock SemaphoreLockConfig) (*Semaphore
 		if !trace.IsCompareFailed(err) {
 			return nil, trace.Wrap(err)
 		}
-		log.WithError(err).Debugf("Failed to acquire, going to sleep for %v", lock.Retry.Duration())
+		lock.Retry.Inc()
+		sleepFor := lock.Retry.Duration()
+		log.WithError(err).Debugf("Failed to acquire, going to sleep for %v", sleepFor)
 		select {
-		case <-lock.Clock.After(lock.Retry.Duration()):
+		case <-lock.Clock.After(sleepFor):
 			continue
 		case <-ctx.Done():
 			return nil, trace.ConnectionProblem(ctx.Err(), "context is cancelled")
@@ -203,6 +207,9 @@ type Semaphore interface {
 	// GetMaxResources returns maximum available amount
 	// of resources consumed by the semaphore
 	GetMaxResources() int64
+	// SetMaxResources sets the maximum available amout
+	// of resources consumed by the semaphore.
+	SetMaxResources(max int64)
 	// AddLease adds a lease to the list
 	AddLease(SemaphoreLease)
 	// SetLeases sets the lease list to the value
@@ -289,6 +296,10 @@ func (c *SemaphoreV3) GetLeases() []SemaphoreLease {
 
 func (c *SemaphoreV3) GetMaxResources() int64 {
 	return c.Spec.MaxResources
+}
+
+func (c *SemaphoreV3) SetMaxResources(max int64) {
+	c.Spec.MaxResources = max
 }
 
 // GetVersion returns resource version
