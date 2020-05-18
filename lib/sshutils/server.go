@@ -59,6 +59,7 @@ type Server struct {
 
 	newChanHandler NewChanHandler
 	reqHandler     RequestHandler
+	newConnHandler NewConnHandler
 
 	cfg     ssh.ServerConfig
 	limiter *limiter.Limiter
@@ -192,6 +193,13 @@ func SetSSHConfig(cfg ssh.ServerConfig) ServerOption {
 func SetRequestHandler(req RequestHandler) ServerOption {
 	return func(s *Server) error {
 		s.reqHandler = req
+		return nil
+	}
+}
+
+func SetNewConnHandler(handler NewConnHandler) ServerOption {
+	return func(s *Server) error {
+		s.newConnHandler = handler
 		return nil
 	}
 }
@@ -439,6 +447,15 @@ func (s *Server) HandleConnection(conn net.Conn) {
 	ccx := NewConnectionContext(context.TODO(), wconn, sconn)
 	defer ccx.Close()
 
+	if s.newConnHandler != nil {
+		if err := s.newConnHandler.HandleNewConn(ccx); err != nil {
+			s.Warnf("Dropping inbound ssh connection: %v", err)
+			sconn.Close()
+			conn.Close()
+			return
+		}
+	}
+
 	for {
 		select {
 		// handle out of band ssh requests
@@ -483,6 +500,18 @@ type NewChanHandlerFunc func(*ConnectionContext, ssh.NewChannel)
 
 func (f NewChanHandlerFunc) HandleNewChan(ccx *ConnectionContext, ch ssh.NewChannel) {
 	f(ccx, ch)
+}
+
+// NewConnHandler is called once per incoming connection.
+// Errors terminate the incoming connection.
+type NewConnHandler interface {
+	HandleNewConn(*ConnectionContext) error
+}
+
+type NewConnHandlerFunc func(*ConnectionContext) error
+
+func (f NewConnHandlerFunc) HandleNewConn(ccx *ConnectionContext) error {
+	return f(ccx)
 }
 
 type AuthMethods struct {

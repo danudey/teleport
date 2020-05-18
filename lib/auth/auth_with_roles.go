@@ -1778,6 +1778,52 @@ func (a *AuthWithRoles) DeleteAllRemoteClusters() error {
 	return a.authServer.DeleteAllRemoteClusters()
 }
 
+// TryAcquireSemaphore acquires lease with requested resources from semaphore.
+func (a *AuthWithRoles) TryAcquireSemaphore(ctx context.Context, sem services.Semaphore, lease services.SemaphoreLease) (*services.SemaphoreLease, error) {
+	if err := a.action(defaults.Namespace, services.KindSemaphore, services.VerbCreate); err != nil {
+		return nil, trace.Wrap(err)
+	}
+	if err := a.action(defaults.Namespace, services.KindSemaphore, services.VerbUpdate); err != nil {
+		return nil, trace.Wrap(err)
+	}
+	return a.authServer.TryAcquireSemaphore(ctx, sem, lease)
+}
+
+// KeepAliveSemaphoreLease updates semaphore lease.
+func (a *AuthWithRoles) KeepAliveSemaphoreLease(ctx context.Context, lease services.SemaphoreLease) error {
+	if err := a.action(defaults.Namespace, services.KindSemaphore, services.VerbUpdate); err != nil {
+		return trace.Wrap(err)
+	}
+	return a.authServer.KeepAliveSemaphoreLease(ctx, lease)
+}
+
+// CancelSemaphoreLease cancels semaphore lease early.
+func (a *AuthWithRoles) CancelSemaphoreLease(ctx context.Context, lease services.SemaphoreLease) error {
+	if err := a.action(defaults.Namespace, services.KindSemaphore, services.VerbUpdate); err != nil {
+		return trace.Wrap(err)
+	}
+	return a.authServer.CancelSemaphoreLease(ctx, lease)
+}
+
+// GetAllSemaphores returns a list of all semaphores in the system.
+func (a *AuthWithRoles) GetAllSemaphores(ctx context.Context, opts ...services.MarshalOption) ([]services.Semaphore, error) {
+	if err := a.action(defaults.Namespace, services.KindSemaphore, services.VerbReadNoSecrets); err != nil {
+		return nil, trace.Wrap(err)
+	}
+	if err := a.action(defaults.Namespace, services.KindSemaphore, services.VerbList); err != nil {
+		return nil, trace.Wrap(err)
+	}
+	return a.authServer.GetAllSemaphores(ctx, opts...)
+}
+
+// DeleteAllSemaphores deletes all semaphores in the system.
+func (a *AuthWithRoles) DeleteAllSemaphores(ctx context.Context) error {
+	if err := a.action(defaults.Namespace, services.KindSemaphore, services.VerbDelete); err != nil {
+		return trace.Wrap(err)
+	}
+	return a.authServer.DeleteAllSemaphores(ctx)
+}
+
 // ProcessKubeCSR processes CSR request against Kubernetes CA, returns
 // signed certificate if successful.
 func (a *AuthWithRoles) ProcessKubeCSR(req KubeCSR) (*KubeCSRResponse, error) {

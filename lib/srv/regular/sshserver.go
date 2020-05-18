@@ -825,6 +825,44 @@ func (s *Server) HandleRequest(r *ssh.Request) {
 	}
 }
 
+/*func (s *Server) HandleNewConn(ccx *sshutils.ConnectionContext) error {
+	const leaseExpiry = time.Minute * 2
+	identityContext, err := s.authHandlers.CreateIdentityContext(ccx.ServerConn)
+	if err != nil {
+		return trace.Wrap(err)
+	}
+
+	maxConcurrentSessions := identityContext.RoleSet.MaxConcurrentSessions()
+
+	if maxConcurrentSessions == 0 {
+		// concurrent session control is not active, nothing
+		// else needs to be done here.
+		return nil
+	}
+
+	expires := time.Now().Add(leaseExpiry)
+
+	sem, err := services.NewSemaphore(identityContext.TeleportUser, services.KindUser, expires, services.SemaphoreSpecV3{
+		MaxResources: maxConcurrentSessions,
+	})
+	if err != nil {
+		return trace.Wrap(err)
+	}
+	lease := services.SemaphoreLease{
+		Resources: 1,
+		Expires:   expires,
+	}
+	lock, err := services.AcquireSemaphore(context.TODO(), services.SemaphoreLockConfig{
+		Service:   s,
+		Lease:     lease,
+		Semaphore: sem,
+	})
+	if err != nil {
+		return trace.Wrap(err)
+	}
+	panic("NOT IMPLEMENTED")
+}*/
+
 // HandleNewChan is called when new channel is opened
 func (s *Server) HandleNewChan(ccx *sshutils.ConnectionContext, nch ssh.NewChannel) {
 	identityContext, err := s.authHandlers.CreateIdentityContext(ccx.ServerConn)

@@ -2672,6 +2672,80 @@ func (c *Client) Ping(ctx context.Context) (proto.PingResponse, error) {
 	return *rsp, nil
 }
 
+// TryAcquireSemaphore acquires lease with requested resources from semaphore.
+func (c *Client) TryAcquireSemaphore(ctx context.Context, sem services.Semaphore, lease services.SemaphoreLease) (*services.SemaphoreLease, error) {
+	clt, err := c.grpc()
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+	s, ok := sem.(*services.SemaphoreV3)
+	if !ok {
+		return nil, trace.BadParameter("unexpected semaphore type: %T", sem)
+	}
+	rsp, err := clt.TryAcquireSemaphore(ctx, &proto.AcquireSemaphore{
+		Semaphore: s,
+		Lease:     &lease,
+	})
+	if err != nil {
+		return nil, trail.FromGRPC(err)
+	}
+	return rsp, nil
+}
+
+// KeepAliveSemaphoreLease updates semaphore lease.
+func (c *Client) KeepAliveSemaphoreLease(ctx context.Context, lease services.SemaphoreLease) error {
+	clt, err := c.grpc()
+	if err != nil {
+		return trace.Wrap(err)
+	}
+	if _, err := clt.KeepAliveSemaphoreLease(ctx, &lease); err != nil {
+		return trail.FromGRPC(err)
+	}
+	return nil
+}
+
+// CancelSemaphoreLease cancels semaphore lease early.
+func (c *Client) CancelSemaphoreLease(ctx context.Context, lease services.SemaphoreLease) error {
+	clt, err := c.grpc()
+	if err != nil {
+		return trace.Wrap(err)
+	}
+	if _, err := clt.CancelSemaphoreLease(ctx, &lease); err != nil {
+		return trail.FromGRPC(err)
+	}
+	return nil
+}
+
+// GetAllSemaphores returns a list of all semaphores in the system.
+func (c *Client) GetAllSemaphores(ctx context.Context, opts ...services.MarshalOption) ([]services.Semaphore, error) {
+	clt, err := c.grpc()
+	if err != nil {
+		return nil, trace.Wrap(err)
+	}
+	rsp, err := clt.GetAllSemaphores(ctx, &empty.Empty{})
+	if err != nil {
+		return nil, trail.FromGRPC(err)
+	}
+	sems := make([]services.Semaphore, 0, len(rsp.Semaphores))
+	for _, s := range rsp.Semaphores {
+		sems = append(sems, s)
+	}
+	return sems, nil
+}
+
+// DeleteAllSemaphores deletes all semaphores in the system.
+func (c *Client) DeleteAllSemaphores(ctx context.Context) error {
+	return trace.NotImplemented("not implemented")
+	/*clt, err := c.grpc()
+	if err != nil {
+		return trace.Wrap(err)
+	}
+	if _, err := clt.DeleteAllSemaphores(ctx, &emtpy.Empty{}); err != nil {
+		return trail.FromGRPC(err)
+	}
+	return nil*/
+}
+
 // WebService implements features used by Web UI clients
 type WebService interface {
 	// GetWebSessionInfo checks if a web sesion is valid, returns session id in case if
